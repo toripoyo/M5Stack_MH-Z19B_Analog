@@ -1,14 +1,15 @@
 #include <M5Stack.h>
 
-uint8_t readCommand[9] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
-uint8_t resetCommand[9] = {0xFF, 0x01, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78};
-uint8_t response[9] = {};
+const uint8_t kCommandLen = 9;
+const uint8_t kResponseLen = 9;
+const uint8_t kReadCommand[kCommandLen] = {0xFF, 0x01, 0x86, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79};
+const uint8_t kResetCommand[kCommandLen] = {0xFF, 0x01, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78};
 
 // BackGround Picture Data
 extern const unsigned short BGPicture[];
 
 // Function Define
-void drawNowPPMData(uint16_t);
+void drawPPMVal(uint16_t);
 void drawBlueScreen(String);
 
 void setup()
@@ -17,54 +18,53 @@ void setup()
   Serial2.begin(9600);
   M5.Lcd.setTextColor(TFT_WHITE);
   M5.Lcd.setTextFont(4);
-}
 
-void loop()
-{
+  // Calibration
+  M5.update();
   if (M5.BtnB.isPressed())
   {
-    // Calibration
-    Serial2.write(resetCommand, 9);
+    Serial2.write(kResetCommand, kCommandLen);
     drawBlueScreen("Resetting...");
     delay(5000);
     M5.Power.reset();
   }
-  else
-  {
-    // Read Current ppm
-    Serial2.write(readCommand, 9);
-  }
-  Serial2.readBytes(response, 9);
+}
 
+void loop()
+{
+  uint8_t response[kResponseLen] = {};
+
+  // Read Current ppm
+  Serial2.write(kReadCommand, kCommandLen);
+  Serial2.readBytes(response, kResponseLen);
+
+  // resnponse is ok
   if (response[0] == 0xFF && response[1] == 0x86)
   {
-    uint16_t measuredPPM = (256 * response[2]) + response[3];
-    drawNowPPMData(measuredPPM);
-    M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.drawString(String(response[4] - 40) + " °C ", 0, 185);
+    uint16_t meas_PPM = (256 * response[2]) + response[3];
+    drawPPMVal(meas_PPM);
+    delay(1000);
   }
   else
   {
     drawBlueScreen("Invalid Response!");
-    delay(5000);
+    delay(3000);
     M5.Power.reset();
   }
-
-  M5.update();
-  delay(5000);
 }
+
+// ---------------------------------------------------------------------
 
 // Coordinate Converter
-int16_t deg2xPos(uint16_t lineLen, float deg)
+int16_t deg2xPos(uint16_t line_len, float deg)
 {
   float rad = deg / 180.0 * 3.141592654;
-  return (int16_t)(-lineLen * sin(rad));
+  return (int16_t)(-line_len * sin(rad));
 }
-int16_t deg2yPos(uint16_t lineLen, float deg)
+int16_t deg2yPos(uint16_t line_len, float deg)
 {
   float rad = deg / 180.0 * 3.141592654;
-  return (int16_t)(lineLen * cos(rad));
+  return (int16_t)(line_len * cos(rad));
 }
 
 // Draw Blue Screen
@@ -76,47 +76,53 @@ void drawBlueScreen(String s)
   M5.Lcd.drawString(s, 0, 100);
 }
 
-// Draw Now Data
-void drawNowPPMData(uint16_t ppm)
+// Draw Wide Line
+void drawWideLine(uint16_t x_pos, uint16_t y_pos, uint16_t line_start, uint16_t line_end, float degree)
 {
-  const int xOffset = 40;
-  M5.Lcd.fillScreen(TFT_BLACK);
-  M5.Lcd.pushImage(0 + xOffset, 0, 320, 240, BGPicture);
-  M5.Lcd.setTextColor(TFT_WHITE);
-  M5.Lcd.setTextSize(2);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree), y_pos + deg2yPos(line_start, degree), 
+                  x_pos + deg2xPos(line_end, degree), y_pos + deg2yPos(line_end, degree), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree + 4), y_pos + deg2yPos(line_start, degree + 4), 
+                  x_pos + deg2xPos(line_end, degree + 0.3), y_pos + deg2yPos(line_end, degree + 0.3), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree - 4), y_pos + deg2yPos(line_start, degree - 4), 
+                  x_pos + deg2xPos(line_end, degree - 0.3), y_pos + deg2yPos(line_end, degree - 0.3), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree + 8), y_pos + deg2yPos(line_start, degree + 8), 
+                  x_pos + deg2xPos(line_end, degree + 0.6), y_pos + deg2yPos(line_end, degree + 0.6), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree - 8), y_pos + deg2yPos(line_start, degree - 8), 
+                  x_pos + deg2xPos(line_end, degree - 0.6), y_pos + deg2yPos(line_end, degree - 0.6), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree + 12), y_pos + deg2yPos(line_start, degree + 12), 
+                  x_pos + deg2xPos(line_end, degree + 0.9), y_pos + deg2yPos(line_end, degree + 0.9), RED);
+  M5.Lcd.drawLine(x_pos + deg2xPos(line_start, degree - 12), y_pos + deg2yPos(line_start, degree - 12), 
+                  x_pos + deg2xPos(line_end, degree - 0.9), y_pos + deg2yPos(line_end, degree - 0.9), RED);
+}
 
-  if (ppm >= 1500)
-  {
-    M5.Lcd.setTextColor(TFT_RED);
-  }
-  else if (ppm >= 1000 && ppm < 1500)
-  {
-    M5.Lcd.setTextColor(TFT_ORANGE);
-  }
-  else if (ppm >= 500 && ppm < 1000)
-  {
-    M5.Lcd.setTextColor(TFT_GREEN);
-  }
-  else if (ppm < 500)
-  {
-    M5.Lcd.setTextColor(TFT_BLUE);
-  }
-  M5.Lcd.drawNumber(ppm, 0, 0);
-  M5.Lcd.setTextSize(1);
-  M5.Lcd.drawString("ppm", 30, 40);
+// Draw Now Data
+void drawPPMVal(uint16_t ppm)
+{
+  const uint16_t x_offset = 40;
+  static uint16_t ppm_old = 0;
 
-  float deg = (float)ppm * 360.0 / 1600.0;
+  if (ppm != ppm_old)
+  {
+    ppm_old = ppm;
 
-  // Draw Widw-Line Needle
-  int xPos = 160 + xOffset;
-  int yPos = 120;
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg), yPos + deg2yPos(10, deg), xPos + deg2xPos(83, deg), yPos + deg2yPos(83, deg), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg + 4), yPos + deg2yPos(10, deg + 4), xPos + deg2xPos(83, deg + 0.3), yPos + deg2yPos(83, deg + 0.3), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg - 4), yPos + deg2yPos(10, deg - 4), xPos + deg2xPos(83, deg - 0.3), yPos + deg2yPos(83, deg - 0.3), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg + 8), yPos + deg2yPos(10, deg + 8), xPos + deg2xPos(83, deg + 0.6), yPos + deg2yPos(83, deg + 0.6), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg - 8), yPos + deg2yPos(10, deg - 8), xPos + deg2xPos(83, deg - 0.6), yPos + deg2yPos(83, deg - 0.6), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg + 12), yPos + deg2yPos(10, deg + 12), xPos + deg2xPos(83, deg + 0.9), yPos + deg2yPos(83, deg + 0.9), RED);
-  M5.Lcd.drawLine(xPos + deg2xPos(10, deg - 12), yPos + deg2yPos(10, deg - 12), xPos + deg2xPos(83, deg - 0.9), yPos + deg2yPos(83, deg - 0.9), RED);
+    M5.Lcd.fillRect(0, 0, 150, 90, TFT_BLACK);
+    M5.Lcd.pushImage(0 + x_offset, 0, 320, 240, BGPicture);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.setTextSize(2);
+
+    if (ppm >= 1500){M5.Lcd.setTextColor(TFT_RED);}
+    else if (ppm >= 1000 && ppm < 1500){M5.Lcd.setTextColor(TFT_ORANGE);}
+    else if (ppm >= 500 && ppm < 1000){M5.Lcd.setTextColor(TFT_GREEN);}
+    else if (ppm < 500){M5.Lcd.setTextColor(TFT_BLUE);}
+    
+    M5.Lcd.drawNumber(ppm, 0, 0);
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.drawString("ppm", 30, 40);
+
+    if (ppm > 1200){ppm = 1200;}
+    float degree = (float)ppm * 360.0 / 1600.0;
+    drawWideLine(160+x_offset, 120, 10, 83, degree);
+  }
 }
 
 // BackGround Picture Data
